@@ -1,23 +1,37 @@
+# Directories for simulation files and outputs
+SIM_DIR = sim
+OUT_DIR = out
+
+# Create directories if they don't exist
+$(SIM_DIR):
+	mkdir -p $(SIM_DIR)
+
+$(OUT_DIR):
+	mkdir -p $(OUT_DIR)
+
 # compile and run a module
-mod_%:
-	iverilog -g2012 -o sim/$*.vvp mod/$*.sv
-	vvp sim/$*.vvp > out/$*.out
+mod_%: $(SIM_DIR) $(OUT_DIR)
+	iverilog -g2012 -o $(SIM_DIR)/$*.vvp $*.sv
+	vvp $(SIM_DIR)/$*.vvp > $(OUT_DIR)/$*.out
 
 # compile and run a testbench
-test_%:
-	iverilog -g2012 -o sim/$*.vvp test/$*_tb.sv
-	vvp sim/$*.vvp > out/$*.out
+test_%: $(SIM_DIR) $(OUT_DIR)
+	iverilog -g2012 -o $(SIM_DIR)/$*.vvp $*_tb.sv
+	vvp $(SIM_DIR)/$*.vvp > $(OUT_DIR)/$*.out
 
 # compile and run all testbenches
-TEST_NAMES = $(basename $(notdir $(wildcard test/*_tb.sv)))
+TEST_NAMES = $(basename $(notdir $(wildcard *_tb.sv)))
 TEST_NAMES := $(foreach testname, $(TEST_NAMES), $(subst _tb,,$(testname)))
-all_tests:
-	@echo $(TEST_NAMES)
-	$(foreach testname, $(TEST_NAMES), iverilog -g2012 -o sim/$(testname).vvp test/$(testname)_tb.sv; vvp sim/$(testname).vvp > out/$(testname).out;)
+all_tests: $(SIM_DIR) $(OUT_DIR)
+	@echo "Running tests: $(TEST_NAMES)"
+	$(foreach testname, $(TEST_NAMES), \
+		iverilog -g2012 -o $(SIM_DIR)/$(testname).vvp $(testname)_tb.sv; \
+		vvp $(SIM_DIR)/$(testname).vvp > $(OUT_DIR)/$(testname).out; \
+	)
 
 FILE_PATH ?= tko/basic_add.tko
-eval:
-	iverilog -g2012 -o sim/eval.vvp eval.sv
-	vvp sim/eval.vvp +FP=$(FILE_PATH) > out/eval.out
+eval: $(SIM_DIR) $(OUT_DIR)
+	iverilog -g2012 -o $(SIM_DIR)/eval.vvp eval.sv
+	vvp $(SIM_DIR)/eval.vvp +FP=$(FILE_PATH) > $(OUT_DIR)/eval.out
 
 .PHONY: mod_% test_% all_tests eval
