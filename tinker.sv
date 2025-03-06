@@ -122,26 +122,28 @@ module instruction_decoder(
     // Instantiate a register file for reading; no write occurs here.
     regFile reg_file (64'b0, 1'b0, 1'b1, 1'b1, rd, rs, rt, rsO, rtO);
 
-    // Instantiate ALU or FPU based on opcode using a generate block.
-    // FP instructions: opcodes 10100 - 10111.
-    wire useFPU;
-    assign useFPU = (opcode == 5'b10100) || (opcode == 5'b10101) ||
-                    (opcode == 5'b10110) || (opcode == 5'b10111);
-
-    generate
-        if (useFPU) begin : fpu_inst_block
-            fpu fpu_inst (opcode, rd, rsO, rtO, L);
-        end else begin : alu_inst_block
-            alu alu_inst (opcode, rd, rsO, rtO, L);
-        end
-    endgenerate
-endmodule
-
-//---------------------------------------------------------------------
-// tinker_core Module
-//---------------------------------------------------------------------
-module tinker_core(
-    input [31:0] instruction  // 32-bit instruction input
-);
-    instruction_decoder inst (instruction);
+    // big switch statement to call either ALU or FPU
+    always @(*) begin     // This is a combinational circuit
+        case (opcode)
+        // arithmetic
+        5'b11000: alu(opcode, rd, rsO, rtO, L)  // add 
+        5'b11010: alu(opcode, rd, rsO, rtO, L) // sub
+        5'b11100: alu(opcode, rd, rsO, rtO, L) // mul
+        5'b11101: alu(opcode, rd, rsO, rtO, L) // div
+        // logical instructions
+        5'b00000: alu(opcode, rd, rsO, rtO, L) // and
+        5'b00001: alu(opcode, rd, rsO, rtO, L) // or
+        5'b00010: alu(opcode, rd, rsO, rtO, L) // xor
+        5'b00011: alu(opcode, rd, rsO, rtO, L) // not
+        5'b00100: alu(opcode, rd, rsO, rtO, L) // shftr
+        5'b00110: alu(opcode, rd, rsO, rtO, L) // shftl
+        // data movement instructions
+        5'b10001: alu(opcode, rd, rsO, rtO, L) // mov rd, rs
+        5'b10010: alu(opcode, rd, rsO, rtO, L) // mov rd, L 
+        5'b10100: fpu(opcode, rd, rsO, rtO, L)  // addf
+        5'b10101: fpu(opcode, rd, rsO, rtO, L) // subf
+        5'b10110: fpu(opcode, rd, rsO, rtO, L) // mulf
+        5'b10111: fpu(opcode, rd, rsO, rtO, L) // divf       
+        endcase
+    end
 endmodule
