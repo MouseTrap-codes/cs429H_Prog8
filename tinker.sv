@@ -66,7 +66,7 @@ module alu (
             5'b10001: result = rs;              // mov rd, rs
             5'b10010: begin                     // mov rd, L
                         result = 64'b0;
-                        result[63:52] = L;    // literal loaded into bits 63:52 per spec
+                        result[11:0] = L;    // literal loaded into bits 63:52 per spec
                      end
             default: result = 64'b0;
         endcase
