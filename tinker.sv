@@ -1,20 +1,22 @@
 //---------------------------------------------------------------------
 // regFile Module
 //---------------------------------------------------------------------
+// This register file has 32 registers. It supports two simultaneous reads 
+// (via re1/re2) and one write (via we). The three address ports are 5 bits.
 module regFile (
     input  [63:0] data,      // Data to be written
     input         we,        // Write enable signal
     input         re1,       // Read enable for rs
     input         re2,       // Read enable for rt
-    input  [4:0]  rd,        // Write address
-    input  [4:0]  rs,        // Read address 1
-    input  [4:0]  rt,        // Read address 2
-    output reg [63:0] rsOut, // Data output from address rs
-    output reg [63:0] rtOut  // Data output from address rt
+    input  [4:0]  rd,        // Write address (destination)
+    input  [4:0]  rs,        // Read address 1 (source)
+    input  [4:0]  rt,        // Read address 2 (source)
+    output reg [63:0] rsOut, // Data output from register rs
+    output reg [63:0] rtOut  // Data output from register rt
 );
     reg [63:0] registers [31:0];
 
-    // read rs, rt (combinational read)
+    // Combinational read
     always @(*) begin
         if (re1)
             rsOut = registers[rs];
@@ -26,7 +28,7 @@ module regFile (
             rtOut = 64'b0;
     end
 
-    // write rd (combinational write for this stage)
+    // Combinational write (for simulation; note that real designs use clocks)
     always @(*) begin
         if (we)
             registers[rd] = data;
@@ -36,56 +38,55 @@ endmodule
 //---------------------------------------------------------------------
 // ALU Module
 //---------------------------------------------------------------------
+// Implements integer arithmetic, logical, shift, and data movement instructions.
+// For the mov rd, L instruction, the literal is stored in bits 63:52 as per the spec.
 module alu (
     input  [4:0]  opcode,
-    input  [4:0]  rd,         // destination register
-    input  [63:0] rs,         // operand 1
-    input  [63:0] rt,         // operand 2
-    input  [11:0] L,          // literal value (for mov)
+    input  [63:0] rs,         // Operand 1
+    input  [63:0] rt,         // Operand 2
+    input  [11:0] L,          // 12-bit literal (for mov)
     output reg [63:0] result  // ALU result
 );
-    always @(*) begin // combinational logic
+    always @(*) begin
         case (opcode)
-            // arithmetic
+            // Arithmetic instructions
             5'b11000: result = rs + rt;         // add
-            5'b11010: result = rs - rt;         // sub 
+            5'b11010: result = rs - rt;         // sub
             5'b11100: result = rs * rt;         // mul
             5'b11101: result = rs / rt;         // div
-            // logical instructions
+            // Logical instructions
             5'b00000: result = rs & rt;         // and
             5'b00001: result = rs | rt;         // or
             5'b00010: result = rs ^ rt;         // xor
-            5'b00011: result = ~rs;             // not (ignores rt)
-            // shift instructions (using rt as shift amount)
+            5'b00011: result = ~rs;             // not (rt ignored)
+            // Shift instructions (using rt as shift amount)
             5'b00100: result = rs >> rt;        // shftr
             5'b00110: result = rs << rt;        // shftl
-            // data movement instructions
+            // Data movement instructions
             5'b10001: result = rs;              // mov rd, rs
             5'b10010: begin                     // mov rd, L
                         result = 64'b0;
-                        result[11:0] = L;    // literal into bits 11:0
+                        result[63:52] = L;    // literal loaded into bits 63:52 per spec
                      end
             default: result = 64'b0;
         endcase
     end
-
-    // Instantiate a regFile for write-back (for demonstration)
-    regFile inst (result, 1'b1, 1'b0, 1'b0, rd, rs, rt, 64'b0, 64'b0);
 endmodule
 
 //---------------------------------------------------------------------
 // FPU Module
 //---------------------------------------------------------------------
+// Implements floating-point arithmetic instructions using double precision.
+// Conversion from 64-bit bit pattern to real and back is used for simulation.
 module fpu (
     input  [4:0]  opcode,
-    input  [4:0]  rd,         // destination (passed for regFile instantiation)
-    input  [63:0] rs,         // operand 1 (bit pattern)
-    input  [63:0] rt,         // operand 2 (bit pattern)
-    input  [11:0] L,          // literal (if needed)
-    output reg [63:0] result  // FPU result (as 64-bit)
+    input  [63:0] rs,         // Operand 1 (bit pattern)
+    input  [63:0] rt,         // Operand 2 (bit pattern)
+    input  [11:0] L,          // Literal (if needed)
+    output reg [63:0] result  // FPU result (64-bit)
 );
     real op1, op2, res_real;
-    always @(*) begin // combinational logic
+    always @(*) begin
         op1 = $bitstoreal(rs);
         op2 = $bitstoreal(rt);
         case (opcode)
@@ -97,74 +98,95 @@ module fpu (
         endcase
         result = $realtobits(res_real);
     end
-
-    // Instantiate a regFile for write-back (for demonstration)
-    regFile inst (result, 1'b1, 1'b0, 1'b0, rd, rs, rt, 64'b0, 64'b0);
 endmodule
 
 //---------------------------------------------------------------------
 // Instruction Decoder Module
 //---------------------------------------------------------------------
+// Extracts the instruction fields from a 32-bit instruction.
 module instruction_decoder(
-    input [31:0] in  // 32-bit instruction
+    input  [31:0] in,       // 32-bit instruction
+    output [4:0]  opcode,   // Bits 31:27: opcode
+    output [4:0]  rd,       // Bits 26:22: destination register
+    output [4:0]  rs,       // Bits 21:17: source register 1
+    output [4:0]  rt,       // Bits 16:12: source register 2
+    output [11:0] L         // Bits 11:0: literal
 );
-    wire [4:0] opcode, rd, rs, rt;
-    wire [11:0] L;
-
-    // map instruction to its components (bit positions per spec)
     assign opcode = in[31:27];
     assign rd     = in[26:22];
     assign rs     = in[21:17];
     assign rt     = in[16:12];
     assign L      = in[11:0];
-
-    wire [63:0] rsO, rtO;
-    // Instantiate a register file for reading; no write occurs here.
-    regFile reg_file (64'b0, 1'b0, 1'b1, 1'b1, rd, rs, rt, rsO, rtO);
-
-    // Instantiate both ALU and FPU modules
-    wire [63:0] alu_result;
-    alu alu_inst (opcode, rd, rsO, rtO, L, alu_result);
-    wire [63:0] fpu_result;
-    fpu fpu_inst (opcode, rd, rsO, rtO, L, fpu_result);
-
-    // big switch statement to select between ALU and FPU results
-    // (Floating-point opcodes: 10100, 10101, 10110, 10111; others use ALU)
-    reg [63:0] final_result;
-    always @(*) begin     // This is a combinational circuit
-        case (opcode)
-            // arithmetic
-            5'b11000: final_result = alu_result;  // add 
-            5'b11010: final_result = alu_result;  // sub
-            5'b11100: final_result = alu_result;  // mul
-            5'b11101: final_result = alu_result;  // div
-            // logical instructions
-            5'b00000: final_result = alu_result;  // and
-            5'b00001: final_result = alu_result;  // or
-            5'b00010: final_result = alu_result;  // xor
-            5'b00011: final_result = alu_result;  // not
-            5'b00100: final_result = alu_result;  // shftr
-            5'b00110: final_result = alu_result;  // shftl
-            // data movement instructions
-            5'b10001: final_result = alu_result;  // mov rd, rs
-            5'b10010: final_result = alu_result;  // mov rd, L 
-            // floating-point instructions
-            5'b10100: final_result = fpu_result;   // addf
-            5'b10101: final_result = fpu_result;   // subf
-            5'b10110: final_result = fpu_result;   // mulf
-            5'b10111: final_result = fpu_result;   // divf
-            default: final_result = 64'b0;
-        endcase
-    end
-
-    // (Optional) You can instantiate a write-back register file here to store final_result.
 endmodule
 
 //---------------------------------------------------------------------
-// tinker_core Module
+// tinker_core Module (Top-Level)
 //---------------------------------------------------------------------
+// Implements the complete combinational datapath.
+// The instruction decoder extracts fields from the instruction, the shared
+// register file provides operands and receives the computed result, and the 
+// ALU or FPU (selected via a big switch statement) computes the result.
 module tinker_core(
     input [31:0] instruction  // 32-bit instruction input
 );
-    instruction_decoder inst (instruction);
+    // Decoded fields
+    wire [4:0] opcode, rd, rs, rt;
+    wire [11:0] L;
+    instruction_decoder dec (
+        .in(instruction),
+        .opcode(opcode),
+        .rd(rd),
+        .rs(rs),
+        .rt(rt),
+        .L(L)
+    );
+    
+    // Shared register file instance.
+    // This regFile is used both for reading register values (rsOut, rtOut)
+    // and for writing back the computed result.
+    wire [63:0] rsOut, rtOut;
+    reg [63:0] final_result;
+    regFile reg_file (
+        .data(final_result),
+        .we(1'b1),       // Write enable is always high for this stage.
+        .re1(1'b1),
+        .re2(1'b1),
+        .rd(rd),
+        .rs(rs),
+        .rt(rt),
+        .rsOut(rsOut),
+        .rtOut(rtOut)
+    );
+    
+    // Instantiate the ALU and FPU modules.
+    // They take the register file's outputs (rsOut and rtOut) as their operands.
+    wire [63:0] alu_result;
+    alu alu_inst (
+        .opcode(opcode),
+        .rs(rsOut),
+        .rt(rtOut),
+        .L(L),
+        .result(alu_result)
+    );
+    
+    wire [63:0] fpu_result;
+    fpu fpu_inst (
+        .opcode(opcode),
+        .rs(rsOut),
+        .rt(rtOut),
+        .L(L),
+        .result(fpu_result)
+    );
+    
+    // Big switch statement to select the appropriate result.
+    // Floating-point opcodes (10100, 10101, 10110, 10111) use fpu_result;
+    // all other opcodes use alu_result.
+    always @(*) begin
+        case (opcode)
+            5'b10100, 5'b10101, 5'b10110, 5'b10111:
+                final_result = fpu_result;
+            default:
+                final_result = alu_result;
+        endcase
+    end
 endmodule
