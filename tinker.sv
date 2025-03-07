@@ -1,8 +1,6 @@
 //---------------------------------------------------------------------
 // regFile Module
 //---------------------------------------------------------------------
-// This register file has 32 registers. It supports two simultaneous reads 
-// (via re1/re2) and one write (via we). The three address ports are 5 bits.
 module regFile (
     input  [63:0] data,      // Data to be written
     input         we,        // Write enable signal
@@ -16,7 +14,7 @@ module regFile (
 );
     reg [63:0] registers [31:0];
 
-    // Combinational read
+    // read
     always @(*) begin
         if (re1)
             rsOut = registers[rs];
@@ -28,7 +26,7 @@ module regFile (
             rtOut = 64'b0;
     end
 
-    // Combinational write (for simulation; note that real designs use clocks)
+    // write
     always @(*) begin
         if (we)
             registers[rd] = data;
@@ -38,8 +36,6 @@ endmodule
 //---------------------------------------------------------------------
 // ALU Module
 //---------------------------------------------------------------------
-// Implements integer arithmetic, logical, shift, and data movement instructions.
-// For the mov rd, L instruction, the literal is stored in bits 63:52 as per the spec.
 module alu (
     input  [4:0]  opcode,
     input  [63:0] rs,         // Operand 1
@@ -66,7 +62,7 @@ module alu (
             5'b10001: result = rs;              // mov rd, rs
             5'b10010: begin                     // mov rd, L
                         result = 64'b0;
-                        result[11:0] = L;    // literal loaded into bits 63:52 per spec
+                        result[11:0] = L;    
                      end
             default: result = 64'b0;
         endcase
@@ -76,8 +72,6 @@ endmodule
 //---------------------------------------------------------------------
 // FPU Module
 //---------------------------------------------------------------------
-// Implements floating-point arithmetic instructions using double precision.
-// Conversion from 64-bit bit pattern to real and back is used for simulation.
 module fpu (
     input  [4:0]  opcode,
     input  [63:0] rs,         // Operand 1 (bit pattern)
@@ -120,7 +114,7 @@ module instruction_decoder(
 endmodule
 
 //---------------------------------------------------------------------
-// tinker_core Module (Top-Level)
+// tinker_core Module
 //---------------------------------------------------------------------
 // Implements the complete combinational datapath.
 // The instruction decoder extracts fields from the instruction, the shared
@@ -148,7 +142,7 @@ module tinker_core(
     reg [63:0] final_result;
     regFile reg_file (
         .data(final_result),
-        .we(1'b1),       // Write enable is always high for this stage.
+        .we(1'b1),      
         .re1(1'b1),
         .re2(1'b1),
         .rd(rd),
